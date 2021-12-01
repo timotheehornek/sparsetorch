@@ -1,0 +1,15 @@
+LICENSE
+README.md
+pyproject.toml
+setup.cfg
+setup.py
+src/sparsetorch/__init__.py
+src/sparsetorch/dD_basis_functions.py
+src/sparsetorch/oneD_basis_functions.py
+src/sparsetorch/plotter.py
+src/sparsetorch/solver.py
+src/sparsetorch/utils.py
+src/sparsetorch.egg-info/PKG-INFO
+src/sparsetorch.egg-info/SOURCES.txt
+src/sparsetorch.egg-info/dependency_links.txt
+src/sparsetorch.egg-info/top_level.txt
