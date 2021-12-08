@@ -78,20 +78,25 @@ class BF_dD(torch.nn.Module):
         torch.Tensor
             interpolation matrix
         """
-        
+
         # create deques (usage like queue)
-        eval_deque = deque(bf(x) for bf,x in zip(self.bfs_1D, x))
+        eval_deque = deque(bf(x) for bf, x in zip(self.bfs_1D, x))
         level_deque = deque(bf.levels for bf in self.bfs_1D)
-        
+
         # combine functions, FIFO order
         # (apend to the right and pop from left)
         while len(eval_deque) > 1:
-            evals, levels = self.comb_meth(eval_deque.popleft(), eval_deque.popleft(), level_deque.popleft(), level_deque.popleft())
+            evals, levels = self.comb_meth(
+                eval_deque.popleft(),
+                eval_deque.popleft(),
+                level_deque.popleft(),
+                level_deque.popleft(),
+            )
             eval_deque.append(evals)
             level_deque.append(levels)
         return eval_deque.pop()
 
-        '''
+        """
         # combine functions, LIFO order
         # (append and pop from right side)
         while len(eval_deque) > 1:
@@ -99,12 +104,14 @@ class BF_dD(torch.nn.Module):
             eval_deque.append(evals)
             level_deque.append(levels)
         return eval_deque.pop()
-        '''
+        """
+
 
 class Tensorprod(BF_dD):
     """Implementation of dD basis function evaluations as Pytorch layer.
     Basis functions are combined as tensor product.
     """
+
     def get_bf_num(self):
         """Overrides interface method and returns number of basis functions
         after tensorprod combination of basis functions.
@@ -150,6 +157,7 @@ class Elemprod(BF_dD):
     """Implementation of dD basis function evaluations as Pytorch layer.
     Basis functions are combined as elementwise product.
     """
+
     def get_bf_num(self):
         """Overrides interface method and returns number of basis functions
         after elemprod combination of basis functions.
@@ -190,7 +198,8 @@ class Sparse(BF_dD):
     """Implementation of dD basis function evaluations as Pytorch layer.
     Basis functions are combined as sparse grid.
     """
-    def __get_levcombs(self, l_max):
+
+    def __get_levcombs_old(self, l_max):
         """Generator for all possible sparse level
         combination pairs for given maximum level.
         Pairs generated in ascending order of corresponding
@@ -209,6 +218,29 @@ class Sparse(BF_dD):
         for max in range(l_max + 1):
             for lev_b in range(max + 1):
                 lev_a = max - lev_b
+                yield (lev_a, lev_b)
+
+    def __get_levcombs(self, l_max_a, l_max_b):
+        """Generator for all possible sparse level
+        combination pairs for given maximum level.
+        Pairs generated in ascending order of corresponding
+        level (sum of returned level pair).
+
+        Parameters
+        ----------
+        l_max_a : int
+            maximum level of first base
+        l_max_b : int
+            maximum level of second base
+
+        Yields
+        -------
+        tuple
+            levels, two entries
+        """
+        l_max = max(l_max_a, l_max_b)
+        for lev_b in range(l_max_b + 1):
+            for lev_a in range(min(l_max_a, l_max - lev_b) + 1):
                 yield (lev_a, lev_b)
 
     def get_bf_num(self):
@@ -233,12 +265,14 @@ class Sparse(BF_dD):
             levels_new = [0] * len(levels_dD)
 
             # levelwise traversation
-            for lev_1D, lev_dD in self.__get_levcombs(len(levels_dD) - 1):
-                try:
-                    levels_new[lev_1D + lev_dD] += levels_dD[lev_dD] * bf.levels[lev_1D]
-                except IndexError:
-                    # handle case that basis functions do not have the same number of levels
-                    continue
+            for lev_1D, lev_dD in self.__get_levcombs(
+                len(bf.levels) - 1, len(levels_dD) - 1
+            ):
+                # try:
+                levels_new[lev_1D + lev_dD] += levels_dD[lev_dD] * bf.levels[lev_1D]
+                # except IndexError:
+                #    # handle case that basis functions do not have the same number of levels
+                #    continue
             levels_dD = levels_new
         return sum(levels_dD)
 
@@ -265,8 +299,10 @@ class Sparse(BF_dD):
             number of basis functions at each level in new interpolation matrix
         """
 
-        # compute highest level for computation
-        l_max = max(len(levels_a), len(levels_b)) - 1
+        # compute highest levels for computation
+        l_max_a = len(levels_a) - 1
+        l_max_b = len(levels_b) - 1
+        l_max = max(l_max_a, l_max_b)
 
         # new list with number of evaluations at each level
         levels_new = [0] * (l_max + 1)
@@ -276,7 +312,7 @@ class Sparse(BF_dD):
 
         # compute number of evaluations
         num_evals_new = 0
-        for i, j in self.__get_levcombs(l_max):
+        for i, j in self.__get_levcombs(l_max_a, l_max_b):
             num_evals_new += levels_a[i] * levels_b[j]
 
         # initialize new evaluation tensor
@@ -284,16 +320,17 @@ class Sparse(BF_dD):
 
         idx = 0  # writing index
         # levelwise traversation w.r.t. new evaluation tensor
-        for lev_a, lev_b in self.__get_levcombs(l_max):
-            try:
-                # compute index ranges for respective levels
-                start_a = sum(levels_a[:lev_a])
-                end_a = start_a + levels_a[lev_a]
-                start_b = sum(levels_b[:lev_b])
-                end_b = start_b + levels_b[lev_b]
-            except IndexError:
-                # handle case that one basis provides more levels than the other
-                continue
+        # for lev_a, lev_b in self.__get_levcombs(l_max):
+        for lev_a, lev_b in self.__get_levcombs(l_max_a, l_max_b):
+            # try:
+            # compute index ranges for respective levels
+            start_a = sum(levels_a[:lev_a])
+            end_a = start_a + levels_a[lev_a]
+            start_b = sum(levels_b[:lev_b])
+            end_b = start_b + levels_b[lev_b]
+            # except IndexError:
+            #    # handle case that one basis provides more levels than the other
+            #    continue
 
             # update level list
             levels_new[lev_a + lev_b] += levels_a[lev_a] * levels_b[lev_b]

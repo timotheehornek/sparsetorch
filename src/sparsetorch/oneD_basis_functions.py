@@ -109,8 +109,8 @@ class BF_1D_mesh(BF_1D):
         # index shift caused by boundaries
         shift = int(boundary) * 2
 
-        mu = torch.zeros(2**(level + 1) - 1 + shift)
-        h = torch.zeros(2**(level + 1) - 1 + shift)
+        mu = torch.zeros(2 ** (level + 1) - 1 + shift)
+        h = torch.zeros(2 ** (level + 1) - 1 + shift)
         levels = [0] * (level + 1)
 
         # boundary basis functions at level 0
@@ -125,11 +125,11 @@ class BF_1D_mesh(BF_1D):
             levels[0] += 2
 
         for l in range(level + 1):
-            levels[l] += 2**l
-            h_ = 2**-l
-            for i in range(2**l):
-                mu[2**l + i - 1 + shift] = (i + 0.5) * h_
-                h[2**l + i - 1 + shift] = h_ / 2
+            levels[l] += 2 ** l
+            h_ = 2 ** -l
+            for i in range(2 ** l):
+                mu[2 ** l + i - 1 + shift] = (i + 0.5) * h_
+                h[2 ** l + i - 1 + shift] = h_ / 2
 
         # scale entries
         mu = a + mu * (b - a)
@@ -176,6 +176,49 @@ class Gauss(BF_1D_mesh):
         """
         x = torch.unsqueeze(x, -1)
         return torch.exp(-torch.square((x - self.mu) / self.h))
+
+
+class Gauss_dx(BF_1D_mesh):
+    """Implementation of 1-D Gauss basis first order derivative."""
+
+    def forward(self, x):
+        """Overrides interface method and returns tensor
+        with first order derivatives of gaussian basis function evaluations
+        \\(e^{-((x-\\mu)/h)^2}\\).
+
+        Returns
+        -------
+        torch.Tensor
+            evaluations of all basis functions in `x`
+        """
+        x = torch.unsqueeze(x, -1)
+        return (
+            -2
+            * ((x - self.mu) / self.h ** 2)
+            * torch.exp(-torch.square((x - self.mu) / self.h))
+        )
+
+
+class Gauss_dxx(BF_1D_mesh):
+    """Implementation of 1-D Gauss basis second order derivative."""
+
+    def forward(self, x):
+        """Overrides interface method and returns tensor
+        with second order derivatives of gaussian basis function evaluations
+        \\(e^{-((x-\\mu)/h)^2}\\).
+
+        Returns
+        -------
+        torch.Tensor
+            evaluations of all basis functions in `x`
+        """
+        x = torch.unsqueeze(x, -1)
+        return (
+            -2
+            * (-2 * (x - self.mu) ** 2 + self.h ** 2)
+            / self.h ** 4
+            * torch.exp(-torch.square((x - self.mu) / self.h))
+        )
 
 
 class Hat(BF_1D_mesh):
@@ -296,6 +339,85 @@ class Fourier(BF_1D_orthofun):
         return eval.T
 
 
+class Fourier_dx(Fourier):
+    """Implementation of first order derivative of Fourier series as 1-D basis."""
+
+    def __init__(self, n_max, a=0.0, b=1.0):
+        """
+        Parameters
+        ----------
+        n_max : int
+            maximum level in series
+        a : float, optional
+            left boundary of domain, by default 0.0
+        b : float, optional
+            right boundary of domain, by default 1.0
+        """
+        super().__init__(n_max, a, b)
+
+    def forward(self, x):
+        """Overrides interface method and returns tensor
+        with evaluations of first order derivatives of Fourier series elements.
+
+        Returns
+        -------
+        torch.Tensor
+            evaluations of all basis functions in `x`
+        """
+
+        x_scaled = self.scale(x)
+        eval = torch.empty(self.bf_num, len(x))
+        eval[0] = 0.0
+
+        for n in range(1, self.bf_num // 2 + 1):
+            eval[2 * n - 1] = -n * self.bf_w / self.data_w * torch.sin(n * x_scaled)
+            eval[2 * n] = n * self.bf_w / self.data_w * torch.cos(n * x_scaled)
+        return eval.T
+
+
+class Fourier_dxx(Fourier):
+    """Implementation of second order derivative of Fourier series as 1-D basis."""
+
+    def __init__(self, n_max, a=0.0, b=1.0):
+        """
+        Parameters
+        ----------
+        n_max : int
+            maximum level in series
+        a : float, optional
+            left boundary of domain, by default 0.0
+        b : float, optional
+            right boundary of domain, by default 1.0
+        """
+        super().__init__(n_max, a, b)
+
+    def forward(self, x):
+        """Overrides interface method and returns tensor
+        with evaluations of second order derivatives of Fourier series elements.
+
+        Returns
+        -------
+        torch.Tensor
+            evaluations of all basis functions in `x`
+        """
+
+        x_scaled = self.scale(x)
+        eval = torch.empty(self.bf_num, len(x))
+        eval[0] = 0.0
+
+        for n in range(1, self.bf_num // 2 + 1):
+            # apply product rule
+            duv = -((n * self.bf_w / self.data_w) ** 2) * torch.cos(n * x_scaled)
+            udv = -n * self.bf_w / self.data_w * torch.sin(n * x_scaled)
+            eval[2 * n - 1] = duv #+ udv  # u'v+uv'
+
+            # apply product rule
+            duv = -((n * self.bf_w / self.data_w) ** 2) * torch.sin(n * x_scaled)
+            udv = n * self.bf_w / self.data_w * torch.cos(n * x_scaled)
+            eval[2 * n] = duv #+ udv  # u'v+uv'
+        return eval.T
+
+
 class Chebyshev(BF_1D_orthofun):
     """Implementation of Chebyshev orthogonal polynomials as 1-D basis functions."""
 
@@ -331,7 +453,7 @@ class Chebyshev(BF_1D_orthofun):
             for n in range(2, self.bf_num):
                 # recursive definition not allowed by autograd
                 eval[n] = 2 * x * eval[n - 1].clone() - eval[n - 2].clone()
-                #eval[n] = torch.cos(n * torch.acos(x))
+                # eval[n] = torch.cos(n * torch.acos(x))
         return eval.T
 
 
