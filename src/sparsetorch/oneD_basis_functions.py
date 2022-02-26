@@ -167,7 +167,7 @@ class Gauss(BF_1D_mesh):
 
     def forward(self, x):
         """Overrides interface method and returns tensor with gaussian basis function evaluations
-        \\(e^{-((x-\\mu)/h)^2}\\).
+        $e^{-((x-\\mu)/h)^2}$.
 
         Returns
         -------
@@ -176,15 +176,35 @@ class Gauss(BF_1D_mesh):
         """
         x = torch.unsqueeze(x, -1)
         return torch.exp(-torch.square((x - self.mu) / self.h))
+    
+    def dx(self):
+        """Construct first order derivative object.
+
+        Returns
+        -------
+        _Gauss_dx
+            first order derivative object
+        """
+        return _Gauss_dx(self.mu, self.h, self.levels)
+    
+    def dxx(self):
+        """Construct second order derivative object.
+
+        Returns
+        -------
+        _Gauss_dxx
+            second order derivative object
+        """
+        return _Gauss_dxx(self.mu, self.h, self.levels)
 
 
-class Gauss_dx(BF_1D_mesh):
+class _Gauss_dx(Gauss):
     """Implementation of 1-D Gauss basis first order derivative."""
 
     def forward(self, x):
         """Overrides interface method and returns tensor
         with first order derivatives of gaussian basis function evaluations
-        \\(e^{-((x-\\mu)/h)^2}\\).
+        $e^{-((x-\\mu)/h)^2}$.
 
         Returns
         -------
@@ -199,13 +219,13 @@ class Gauss_dx(BF_1D_mesh):
         )
 
 
-class Gauss_dxx(BF_1D_mesh):
+class _Gauss_dxx(Gauss):
     """Implementation of 1-D Gauss basis second order derivative."""
 
     def forward(self, x):
         """Overrides interface method and returns tensor
         with second order derivatives of gaussian basis function evaluations
-        \\(e^{-((x-\\mu)/h)^2}\\).
+        $e^{-((x-\\mu)/h)^2}$.
 
         Returns
         -------
@@ -226,7 +246,7 @@ class Hat(BF_1D_mesh):
 
     def forward(self, x):
         """Overrides interface method and returns tensor with hat basis function evaluations
-        \\(max((1-|x-\\mu|/h),0) = ReLU((1-|x-\\mu|/h))\\).
+        $max((1-|x-\\mu|/h),0) = ReLU((1-|x-\\mu|/h))$.
 
         Returns
         -------
@@ -276,6 +296,7 @@ class BF_1D_orthofun(BF_1D):
         assert n_max >= 0
         self.n_max = n_max
         self.data_a = a
+        self.data_b = b
         self.data_w = b - a
         self.bf_a = bf_a
         self.bf_w = bf_b - bf_a
@@ -318,6 +339,26 @@ class Fourier(BF_1D_orthofun):
         levels = [1]
         levels.extend([2] * n_max)
         super().__init__(levels, n_max, a, b, bf_a=-math.pi, bf_b=math.pi)
+    
+    def dx(self):
+        """Construct first order derivative object.
+
+        Returns
+        -------
+        _Fourier_dx
+            first order derivative object
+        """
+        return _Fourier_dx(self.n_max, self.data_a, self.data_b)
+    
+    def dxx(self):
+        """Construct second order derivative object.
+
+        Returns
+        -------
+        _Fourier_dxx
+            second order derivative object
+        """
+        return _Fourier_dxx(self.n_max, self.data_a, self.data_b)
 
     def forward(self, x):
         """Overrides interface method and returns tensor
@@ -339,21 +380,8 @@ class Fourier(BF_1D_orthofun):
         return eval.T
 
 
-class Fourier_dx(Fourier):
+class _Fourier_dx(Fourier):
     """Implementation of first order derivative of Fourier series as 1-D basis."""
-
-    def __init__(self, n_max, a=0.0, b=1.0):
-        """
-        Parameters
-        ----------
-        n_max : int
-            maximum level in series
-        a : float, optional
-            left boundary of domain, by default 0.0
-        b : float, optional
-            right boundary of domain, by default 1.0
-        """
-        super().__init__(n_max, a, b)
 
     def forward(self, x):
         """Overrides interface method and returns tensor
@@ -375,21 +403,8 @@ class Fourier_dx(Fourier):
         return eval.T
 
 
-class Fourier_dxx(Fourier):
+class _Fourier_dxx(Fourier):
     """Implementation of second order derivative of Fourier series as 1-D basis."""
-
-    def __init__(self, n_max, a=0.0, b=1.0):
-        """
-        Parameters
-        ----------
-        n_max : int
-            maximum level in series
-        a : float, optional
-            left boundary of domain, by default 0.0
-        b : float, optional
-            right boundary of domain, by default 1.0
-        """
-        super().__init__(n_max, a, b)
 
     def forward(self, x):
         """Overrides interface method and returns tensor
